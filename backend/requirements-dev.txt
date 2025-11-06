@@ -1,0 +1,7 @@
+pytest
+pytest-asyncio
+httpx
+testcontainers
+sqlmodel
+psycopg2-binary
+aio_pika
