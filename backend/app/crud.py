@@ -1,8 +1,11 @@
-from sqlmodel import select, Session, text
 from .models import User, Registry, GiftItem
 from .auth import get_password_hash, verify_password
 from .database import engine
+
 from fastapi import HTTPException, status
+from sqlmodel import select, Session, text
+from sqlalchemy import select as sa_select
+from sqlalchemy.exc import SQLAlchemyError
 
 def create_user(email: str, password: str, session: Session):
     user = User(email=email, hashed_password=get_password_hash(password))
@@ -41,22 +44,26 @@ def search_items(query: str, session: Session, limit: int=50):
 
 # Safe buy: lock the row
 def buy_item(item_id: int, user_id: int, session: Session):
-    # Use SELECT ... FOR UPDATE to lock the row during transaction
-    # SQLModel allows using session.exec with text()
-    item = session.exec(select(GiftItem).where(GiftItem.id == item_id).with_for_update()).first()
-    if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
-    if item.bought:
-        raise HTTPException(status_code=400, detail="Item already bought")
-    if item.reserved_by_user_id and item.reserved_by_user_id != user_id:
-        raise HTTPException(status_code=400, detail="Item reserved by another user")
-    # mark bought
-    item.bought = True
-    item.reserved_by_user_id = user_id
-    session.add(item)
-    session.commit()
-    session.refresh(item)
-    return item
+    try:
+        item = session.exec(
+            sa_select(GiftItem).where(GiftItem.id == item_id).with_for_update()
+        ).first()
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+        if item.bought:
+            raise HTTPException(status_code=400, detail="Item already bought")
+        if item.reserved_by_user_id and item.reserved_by_user_id != user_id:
+            raise HTTPException(status_code=400, detail="Item reserved by another user")
+        # mark bought
+        item.bought = True
+        item.reserved_by_user_id = user_id
+        session.add(item)
+        session.commit()
+        session.refresh(item)
+        return item
+    except SQLAlchemyError as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail="Database error when marking item as purchased") from e
 
 def reserve_item(item_id: int, user_id: int, session: Session):
     item = session.exec(select(GiftItem).where(GiftItem.id == item_id).with_for_update()).first()

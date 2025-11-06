@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 import asyncio, os
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from ..database import get_session

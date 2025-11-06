@@ -2,10 +2,9 @@ import os
 import secrets
 
 from fastapi import APIRouter, Depends
-from sqlmodel import Session
 
 from ..auth import get_current_user
-from ..database import get_session, get_redis
+from ..database import get_redis
 
 
 router = APIRouter(prefix='/api', tags=['csrf'])

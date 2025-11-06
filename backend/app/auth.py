@@ -31,7 +31,10 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     expire = _get_current_time_utc + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     kid = JWT_CURRENT_KID
-    token = jwt.encode(to_encode, JWT_SECRETS[kid], algorithm=ALGORITHM, headers={"kid": kid})
+    secret = JWT_SECRETS.get(kid)  # ensure exists
+    if not secret:
+        raise RuntimeError("Invalid JWT_CURRENT_KID: no matching secret found")
+    token = jwt.encode(to_encode, secret, algorithm=ALGORITHM, headers={"kid": kid})
     return token
 
 def decode_token(token: str):
@@ -39,7 +42,7 @@ def decode_token(token: str):
         header = jwt.get_unverified_header(token)
         kid = header.get('kid')
         if not kid or kid not in JWT_SECRETS:
-            raise JWTError('unknown kid')
+            raise JWTError('Invalid token key id')
         payload = jwt.decode(token, JWT_SECRETS[kid], algorithms=[ALGORITHM])
         return payload
     except JWTError as e:

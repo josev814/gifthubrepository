@@ -1,8 +1,13 @@
+from datetime import datetime
+
+from sqlmodel import Session, select
+import asyncio
+
 from .celery_app import celery
 from .email_sendgrid import send_email_sync
-from .database import engine, get_engine, Session
+from .database import engine, Session
 from .models import Reservation, GiftItem
-from datetime import datetime
+from .pubsub import pubsub
 
 @celery.task
 def send_reminder_email(to_email: str, subject: str, body: str):
@@ -20,10 +25,10 @@ def cleanup_expired_reservations():
             session.delete(r)
             session.commit()
             # broadcast expiry
-            import asyncio
-            from .broadcast import broadcast_message
-            asyncio.get_event_loop().create_task(broadcast_message({
-                "type": "reservation",
-                "action": "expired",
-                "gift_id": r.gift_id
-            }))
+            asyncio.create_task(
+                pubsub.publish({
+                    'type':'reservation',
+                    'action':'expired',
+                    'gift_id': r.gift_id
+                })
+            )
