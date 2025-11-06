@@ -1,0 +1,49 @@
+name: CI Build & Test
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      postgres: { image: postgres:15, env: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: registrydb }, ports: ['5432:5432'] }
+      rabbitmq: { image: rabbitmq:3.11-management, ports: ['15672:15672'] }
+      redis: { image: redis:7, ports: ['6379:6379'] }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with: {python-version: '3.13'}
+      - name: Install backend deps
+        run: |
+          pip install -r backend/requirements.txt
+          pip install -r backend/requirements-dev.txt
+      - name: Run tests
+        run: |
+          pytest -q backend/tests
+      - name: Build backend image
+        run: |
+          docker build -t gift-registry-backend ./backend
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+      - name: Package chromium extension
+        run: |
+          cd extension
+          rm manifest-firefox.json || true
+          zip -r ../extension.zip .
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromium-extension-zip
+          path: extension.zip
+      - name: Package firefox extension
+        run: |
+          cd extension
+          mv manifest-firefox.json manifest.json || true
+          zip -r ../extension.zip .
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firefox-extension-zip
+          path: extension.zip
