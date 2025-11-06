@@ -1,0 +1,123 @@
+services:
+  traefik:
+    image: traefik:latest
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.le.tlschallenge=true"
+      - "--certificatesresolvers.le.acme.email=ops@example.com"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+      - "--log.level=INFO"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
+    labels:
+      - "traefik.http.middlewares.secure-headers.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.secure-headers.headers.contentTypeNosniff=true"
+    
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend
+
+  rabbitmq:
+    image: rabbitmq:3.11-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: rabbit
+      RABBITMQ_DEFAULT_PASS: rabbit
+    ports:
+      - "15672:15672"
+    networks:
+      - backend
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    networks:
+      - backend
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/registrydb
+      JWT_SECRETS: '{"v1":"devsecret1","v2":"devsecret2"}'
+      JWT_CURRENT_KID: "v2"
+      RABBITMQ_URL: amqp://rabbit:rabbit@rabbitmq:5672/
+      REDIS_URL: redis://redis:6379/0
+      SENDGRID_API_KEY: "SG.xxxxxx"
+      FRONTEND_URL: "http://localhost:5173"
+    depends_on:
+      - db
+      - rabbitmq
+      - redis
+    labels:
+      - "traefik.http.routers.backend.rule=Host(`api.example.com`)"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls.certresolver=le"
+      - "traefik.http.routers.backend.middlewares=secure-headers@docker"
+    ports:
+      - "8000:8000"
+    networks:
+      - backend
+
+  celery_worker:
+    build: ./backend
+    restart: unless-stopped
+    command: ["celery", "-A", "app.celery_app.celery", "worker", "--loglevel=info", "--concurrency=2", "--autoscale=4,1"]
+    environment:
+      - RABBITMQ_URL=amqp://rabbit:rabbit@rabbitmq:5672/
+      - REDIS_URL=redis://redis:6379/0
+      - SENDGRID_API_KEY=SG.xxxx
+    depends_on:
+      - backend
+      - rabbitmq
+      - redis
+    networks:
+      - backend
+
+  celery_beat:
+    build: ./backend
+    restart: unless-stopped
+    command: ["celery", "-A", "app.celery_app.celery", "beat", "--loglevel=info"]
+    environment:
+      - RABBITMQ_URL=amqp://rabbit:rabbit@rabbitmq:5672/
+      - REDIS_URL=redis://redis:6379/0
+      - SENDGRID_API_KEY=SG.xxxx
+    depends_on:
+      - backend
+      - rabbitmq
+      - redis
+    networks:
+      - backend
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    labels:
+      - "traefik.http.routers.frontend.rule=Host(`app.example.com`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=le"
+      - "traefik.http.services.frontend.loadbalancer.server.port=5173"
+    networks:
+      - backend
+
+volumes:
+  pgdata:
+
+networks:
+  backend:
