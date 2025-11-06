@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Gift Registry Adder",
+  "version": "1.0",
+  "description": "Add gifts to your registry from any site",
+  "icons": {
+    "48":"icon-48.png",
+    "128":"icon-128.png"
+  },
+  "permissions": ["activeTab","storage","scripting"],
+  "host_permissions": ["http://*/*","https://*/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup":"popup.html",
+    "default_icon":{
+      "48":"icon-48.png"
+    }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src https://api.example.com"
+  },
+  "optional_permissions": ["identity"]   /* optional if using OAuth via extension */
+}
